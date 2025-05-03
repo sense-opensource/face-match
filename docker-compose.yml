@@ -1,0 +1,12 @@
+services:
+  sense_face_verification:
+    container_name: sense_face_verification_container
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sense_face_verification_image
+    ports:
+      - "8000:8000"  # map host:container
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Kolkata
