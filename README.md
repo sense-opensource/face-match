@@ -64,4 +64,4 @@ docker logs sense_face_verification_container
 MIT License — free to use, share, and modify.
 
 ### Demo url
-https://getsense.co/face-match
+https://getsense.co/face-match/
