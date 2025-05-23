@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
     image: sense_face_verification_image
     ports:
-      - "8000:8000"  # map host:container
+      - "3015:3015"  # map host:container
     restart: unless-stopped
     environment:
       - TZ=Asia/Kolkata

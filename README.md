@@ -1,4 +1,9 @@
 
+## Introduction
+Sense Face Match leverages state-of-the-art deep learning models to deliver highly accurate face detection, embedding extraction, and face comparison. Designed for both developers and enterprises, it supports secure user authentication, and face match checks —all while keeping biometric data private and local.
+
+Whether you are building secure onboarding for fintech or adding face login to your app, Sense Face Match provides the tools and flexibility you need.
+
 ### Install Python Dependencies
 pip install -r requirements.txt
 
@@ -6,7 +11,7 @@ pip install -r requirements.txt
 uvicorn app:app --reload
 
 This will start the API server on:
-http://localhost:8000
+http://localhost:3015
 
 
 ### Running with Docker
@@ -14,20 +19,20 @@ http://localhost:8000
 docker build -t sense_face_verification_image .
 
 ### Run Docker Container
-docker run -d --name sense_face_verification_container -p 8000:8000 sense_face_verification_image
+docker run -d --name sense_face_verification_container -p 3015:3015 sense_face_verification_image
 
 This will start the API server on:
-http://localhost:8000
+http://localhost:3015
 
 
 ### 4. Run the Frontend
 
 cd front-end
 npm install
-npm start
+npm run dev
 
 By default, the frontend runs on:
-http://localhost:3000
+http://localhost:5000
 
 
 ### Project Structure
@@ -58,4 +63,5 @@ docker logs sense_face_verification_container
 ### License
 MIT License — free to use, share, and modify.
 
-
+### Demo url
+https://getsense.co/face-match

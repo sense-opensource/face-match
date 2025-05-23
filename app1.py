@@ -125,5 +125,5 @@ async def verify(img1: UploadFile = File(..., description="Selfie image file"),
 if __name__ == "__main__":
     import uvicorn
     # Recommended: uvicorn server:app --host 127.0.0.1 --port 8000 --reload
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=3015)
 

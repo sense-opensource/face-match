@@ -62,7 +62,7 @@ const App = () => {
     formData.append("img2", img2);
 
     try {
-      const response = await axios.post("http://127.0.0.1:8000/verify/", formData, {
+      const response = await axios.post("http://127.0.0.1:3015/verify/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
