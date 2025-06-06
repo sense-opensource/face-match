@@ -32,17 +32,7 @@ npm install
 npm run dev
 
 By default, the frontend runs on:
-http://localhost:5000
-
-
-### Project Structure
-.
-├── Dockerfile
-├── docker-compose.yml
-├── app.py/              # FastAPI app entrypoint
-├── src/                 # Anti-spoofing model logic
-├── resources/           # Pretrained model files
-└── front-end/           # Frontend application (optional)
+http://localhost:3010
 
 
 ### Useful Docker Commands
