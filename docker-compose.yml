@@ -7,6 +7,9 @@ services:
     image: sense_face_verification_image
     ports:
       - "3015:3015"  # map host:container
+    volumes:
+      - ./uploads:/app/uploads
+      - ./temp_files:/app/temp_files
     restart: unless-stopped
     environment:
       - TZ=Asia/Kolkata

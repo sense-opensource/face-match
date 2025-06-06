@@ -1,0 +1,194 @@
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+/* App.css - Add this to your src directory */
+
+:root {
+  --primary-color: #3f51b5;
+  --secondary-color: #f50057;
+  --success-color: #4caf50;
+  --warning-color: #ff9800;
+  --error-color: #f44336;
+  --text-primary: #212121;
+  --text-secondary: #757575;
+  --background-light: #f5f5f5;
+  --border-radius: 8px;
+}
+
+body {
+  font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  background-color: var(--background-light);
+  margin: 0;
+  padding: 0;
+  color: var(--text-primary);
+}
+
+.webcam-container {
+  position: relative;
+  width: 100%;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.webcam-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 2px dashed var(--primary-color);
+  pointer-events: none;
+  box-sizing: border-box;
+  border-radius: var(--border-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.webcam-face-guide {
+  width: 180px;
+  height: 180px;
+  border: 2px dashed white;
+  border-radius: 50%;
+  opacity: 0.7;
+}
+
+.dropzone {
+  border: 2px dashed #cccccc;
+  border-radius: var(--border-radius);
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.3s ease;
+}
+
+.dropzone:hover {
+  border-color: var(--primary-color);
+}
+
+.image-preview {
+  width: 100%;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.image-preview img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.confidence-meter {
+  width: 100%;
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0 16px;
+}
+
+.confidence-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 1s ease-in-out;
+}
+
+.confidence-bar.high {
+  background-color: var(--success-color);
+}
+
+.confidence-bar.medium {
+  background-color: var(--warning-color);
+}
+
+.confidence-bar.low {
+  background-color: var(--error-color);
+}
+
+.result-card {
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.result-header {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  color: white;
+}
+
+.result-header.success {
+  background-color: var(--success-color);
+}
+
+.result-header.error {
+  background-color: var(--error-color);
+}
+
+.result-body {
+  padding: 16px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #eeeeee;
+}
+
+.detail-label {
+  color: var(--text-secondary);
+}
+
+.processed-images {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+  .processed-images {
+    flex-direction: column;
+  }
+}

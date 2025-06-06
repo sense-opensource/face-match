@@ -13,10 +13,26 @@ __pycache__/
 build/
 dist/
 *.egg-info/
-face_data.json
 env/
 venv/
 .git/
 .dockerignore
 Dockerfile
-front-end
+frontend/
+*.jpg
+*.png
+*.h5
+*.params
+*.onnx
+data/
+models/
+notebooks/
+tests/
+tmp/
+# Ignore contents of temp_files and uploads
+temp_files/*
+uploads/*
+
+# Allow .keep files to preserve directory structure
+!temp_files/.keep
+!uploads/.keep

@@ -12,14 +12,12 @@ lib/
 lib64/
 parts/
 sdist/
-var/
-wheels/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
-
+frontend/node_modules
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -81,3 +79,9 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+temp_files/*
+!temp_files/.gitkeep
+logs/*
+!logs/.gitkeep
+uploads/*
+!uploads/.gitkeep
