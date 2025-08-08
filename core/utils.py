@@ -7,6 +7,9 @@ from typing import Any
 import logging
 from core.temp_file_manager import TempFileManager
 import os
+import requests
+import base64
+import filetype
 
 try:
     import torch
@@ -35,6 +38,100 @@ def save_uploaded_file(file: UploadFile, temp_manager: TempFileManager) -> str:
         temp_file.write(content)
     
     return temp_path
+
+async def process_image_input(
+    file: UploadFile = None,
+    image_url: str = None,
+    base64_string: str = None,
+    temp_manager: TempFileManager = None,
+    image_type: str = "image"
+) -> str:
+    """
+    Process image input from multiple sources and save to temporary file
+    
+    Args:
+        file: Uploaded file
+        image_url: URL to download image from
+        base64_string: Base64 encoded image string
+        temp_manager: Temporary file manager
+        image_type: Type of image (for logging)
+        
+    Returns:
+        Path to saved temporary file
+    """
+    try:
+        # Priority 1: File upload
+        if file:
+            contents = await file.read()
+            
+        # Priority 2: URL
+        elif image_url:
+            try:
+                response = requests.get(image_url, timeout=10)
+                if response.status_code != 200:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Failed to download {image_type} from URL. Status: {response.status_code}"
+                    )
+                contents = response.content
+            except requests.exceptions.RequestException as e:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Error downloading {image_type}: {str(e)}"
+                )
+                
+        # Priority 3: Base64 string
+        elif base64_string:
+            try:
+                # Remove data URL prefix if present
+                if ',' in base64_string:
+                    base64_string = base64_string.split(',')[1]
+                contents = base64.b64decode(base64_string)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Invalid base64 string for {image_type}: {str(e)}"
+                )
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"No {image_type} source provided"
+            )
+        
+        # Validate image type
+        kind = filetype.guess(contents)
+        if not kind or kind.mime.split('/')[0] != 'image':
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Provided {image_type} is not a valid image"
+            )
+        
+        # Basic validation - verify it's an image
+        try:
+            Image.open(io.BytesIO(contents))
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid {image_type} file: {str(e)}"
+            )
+        
+        # Save to temporary file
+        ext = f".{kind.extension}" if kind else '.jpg'
+        temp_path = temp_manager.create_temp_file(suffix=ext)
+        
+        with open(temp_path, "wb") as temp_file:
+            temp_file.write(contents)
+        
+        return temp_path
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing {image_type}: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error processing {image_type}: {str(e)}"
+        )
 
 def compute_histogram_similarity(img1_path: str, img2_path: str) -> float:
     """Calculate histogram similarity between two face images"""

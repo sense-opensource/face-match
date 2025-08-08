@@ -540,74 +540,56 @@ class AdvancedImageEnhancer:
             return image
     
     def enhance_for_face_verification(self, image_path: str, is_id_document: bool = False) -> str:
-        """
-        Enhanced specifically for face verification tasks
-        
-        Args:
-            image_path: Path to input image
-            is_id_document: Whether the image is an ID document
-            
-        Returns:
-            Path to enhanced image (temporary file)
-        """
+        """Smart enhancement - maintains accuracy, skips when not needed"""
         try:
-            # Read image
             image = cv2.imread(image_path)
             if image is None:
-                logger.error(f"Failed to load image: {image_path}")
                 return image_path
             
-            # Analyze image quality
-            analysis = self.analyze_image_quality(image)
+            # Quick quality assessment
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            brightness = np.mean(gray)
+            contrast = np.std(gray)
             
-            # Override enhancement type if specified
-            if is_id_document and "document" not in analysis["enhancement_type"]:
-                enhancement_type = "id_card"
-            else:
-                enhancement_type = analysis["enhancement_type"]
+            needs_enhancement = False
+            enhancement_type = "light"
             
-            # Special case for extremely dark images (like the example provided)
-            if analysis["brightness"] < 50:
-                logger.info(f"Low light image detected, applying specialized enhancement")
-                enhancement_type = "low_light"
+            # Determine if enhancement is needed
+            if brightness < 70:  # Dark image
+                needs_enhancement = True
+                enhancement_type = "brightness"
+            elif contrast < 30:  # Low contrast
+                needs_enhancement = True  
+                enhancement_type = "contrast"
+            elif is_id_document and brightness < 90:  # ID cards need more help
+                needs_enhancement = True
+                enhancement_type = "id_document"
+            
+            if needs_enhancement:
+                if enhancement_type == "brightness":
+                    # CLAHE for brightness
+                    enhanced = self._apply_adaptive_clahe(image)
+                elif enhancement_type == "contrast":
+                    # Histogram equalization
+                    if len(image.shape) > 2:
+                        yuv = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
+                        yuv[:,:,0] = cv2.equalizeHist(yuv[:,:,0])
+                        enhanced = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR)
+                    else:
+                        enhanced = cv2.equalizeHist(image)
+                else:  # id_document
+                    # Light CLAHE + slight sharpening
+                    enhanced = self._apply_adaptive_clahe(image)
+                    kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]]) * 0.3
+                    enhanced = cv2.filter2D(enhanced, -1, kernel)
                 
-                # For very dark images, apply extreme enhancement
-                if analysis["brightness"] < 30:
-                    # Create custom params for extremely dark images
-                    custom_params = self.enhancement_params["low_light"].copy()
-                    custom_params["brightness_boost"] = 2.5
-                    custom_params["contrast_boost"] = 2.0
-                    custom_params["gamma"] = 2.2
-                    
-                    # Apply special enhancement pipeline
-                    enhanced = self._apply_enhancement_pipeline(image, custom_params)
-                    
-                    # If still too dark, apply histogram equalization
-                    enhanced_gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
-                    if np.mean(enhanced_gray) < 70:
-                        # Apply additional processing for extremely dark images
-                        enhanced = self._enhance_very_dark_image(enhanced)
-                else:
-                    # Regular low light enhancement
-                    enhanced = self._apply_enhancement_pipeline(
-                        image, 
-                        self.enhancement_params["low_light"]
-                    )
-            else:
-                # Normal enhancement
-                enhanced = self._apply_enhancement_pipeline(
-                    image, 
-                    self.enhancement_params[enhancement_type]
-                )
+                output_path = f"{image_path}_enhanced.jpg"
+                cv2.imwrite(output_path, enhanced)
+                return output_path
             
-            # Save enhanced image to temporary file
-            output_path = f"{image_path}_enhanced.jpg"
-            cv2.imwrite(output_path, enhanced)
+            return image_path
             
-            return output_path
-            
-        except Exception as e:
-            logger.error(f"Face verification enhancement error: {str(e)}")
+        except:
             return image_path
     
     def _enhance_very_dark_image(self, image: np.ndarray) -> np.ndarray:

@@ -20,8 +20,7 @@ class FaceMatchResponse(BaseModel):
     doc_type: str
     error: Optional[str]
     face_detection: Optional[FaceDetection]
-    api_version: str
-    models: dict
-    error: Optional[str] = None
+    api_version: str # Moved from being duplicated
+    models: dict # Moved from being duplicated
     #models: Dict[str, str]
     #comparisons: Optional[Dict[str, float]]  # Added for non-deep learning methods

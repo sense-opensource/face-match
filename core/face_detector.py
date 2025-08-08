@@ -5,6 +5,8 @@ import logging
 import os
 import warnings
 from typing import List, Dict, Any
+import numpy as np
+
 
 # Add these lines at the top to suppress warnings
 warnings.filterwarnings("ignore", message=".*rcond.*")
@@ -23,7 +25,7 @@ try:
     logger.info("dlib is available")
 except ImportError:
     DLIB_AVAILABLE = False
-    logger.warning("dlib not available")
+    logger.warning("dlib not available")        
 
 try:
     import torch
@@ -64,20 +66,17 @@ RETINAFACE_AVAILABLE = False
     
 class MultiFaceDetector:
     """Face detector with multiple backend options, prioritizing MTCNN over RetinaFace"""
-    
     def __init__(self):
-        self.detector_type = "haarcascade"  # Default
-        self.detector = None
-        self.mtcnn = None
-        self.insightface_app = None
-        
-        # CHANGE: Skip RetinaFace completely, start with MTCNN
-        logger.info("Skipping RetinaFace to avoid downloads")
-        
-        # Try to initialize MTCNN detector FIRST
+        self.initialized_detector_type = "haarcascade"  # Default, best successfully initialized
+        self.mtcnn_model = None
+        self.dlib_model = None
+        self.haar_model = None
+        # self.insightface_app = None # Not used for RetinaFace in this version
+
+        # Attempt to initialize MTCNN
         if MTCNN_AVAILABLE:
             try:
-                self.mtcnn = MTCNN(
+                self.mtcnn_model = MTCNN(
                     image_size=160, 
                     margin=0, 
                     min_face_size=20,
@@ -85,197 +84,165 @@ class MultiFaceDetector:
                     factor=0.709, 
                     device='cpu'  # Force CPU
                 )
-                self.detector_type = "mtcnn"
-                logger.info("Using MTCNN detector")
-                return
+                self.initialized_detector_type = "mtcnn"
+                logger.info("Successfully initialized MTCNN detector.")
             except Exception as e:
                 logger.warning(f"Could not initialize MTCNN detector: {e}")
-        
-        # CHANGE: Skip InsightFace RetinaFace initialization
-        # (Remove the old RetinaFace initialization code)
-        
-        # Try to initialize dlib detector if MTCNN not available
+
+        # Attempt to initialize Dlib
         if DLIB_AVAILABLE:
             try:
-                import dlib
-                self.detector = dlib.get_frontal_face_detector()
-                self.detector_type = "dlib"
-                logger.info("Using dlib face detector")
-                return
+                self.dlib_model = dlib.get_frontal_face_detector()
+                # If MTCNN failed and Dlib succeeded, Dlib is now the best
+                if self.initialized_detector_type == "haarcascade":
+                    self.initialized_detector_type = "dlib"
+                logger.info("Successfully initialized dlib face detector.")
             except Exception as e:
                 logger.warning(f"Could not initialize dlib detector: {e}")
-        
-        # Fallback to Haar cascade
-        self.detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        self.detector_type = "haarcascade"
-        logger.info("Using Haar cascade face detector")
-    
-    # Keep all your existing detect_faces and get_best_face methods exactly as they are
-    # Just change the detector priority in __init__
-    
-    def detect_faces(self, image_path: str) -> List[Dict[str, Any]]:
-        print(self.detector_type)
-        """Detect faces with the best available method"""
+
+        # Attempt to initialize Haar cascade
         try:
-            # Read image
+            self.haar_model = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            if self.haar_model.empty():
+                logger.error("Failed to load Haar cascade model, it will be unavailable.")
+                self.haar_model = None
+            else:
+                logger.info("Successfully initialized Haar cascade face detector.")
+        except Exception as e:
+            logger.error(f"Could not initialize Haar cascade detector: {e}")
+            self.haar_model = None
+
+        logger.info(f"MultiFaceDetector initialized. Preferred detector: {self.initialized_detector_type}")
+
+    def _detect_with_mtcnn(self, image: np.ndarray) -> List[Dict[str, Any]]:
+        faces = []
+        if not self.mtcnn_model:
+            return faces
+        try:
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            boxes, probs = self.mtcnn_model.detect(rgb_image)
+            if boxes is not None:
+                for i, (box, prob) in enumerate(zip(boxes, probs)):
+                    if prob > 0.9: # High confidence
+                        x1, y1, x2, y2 = box.astype(int)
+                        faces.append({"bbox": [int(x1), int(y1), int(x2), int(y2)], "confidence": float(prob), "type": "mtcnn"})
+        except Exception as e:
+            logger.error(f"MTCNN detection attempt error: {e}")
+        return faces
+
+    def _detect_with_dlib(self, image: np.ndarray) -> List[Dict[str, Any]]:
+        faces = []
+        if not self.dlib_model:
+            return faces
+        try:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            dlib_faces_rects = self.dlib_model(gray)
+            for i, face_rect in enumerate(dlib_faces_rects):
+                x, y, x2, y2 = face_rect.left(), face_rect.top(), face_rect.right(), face_rect.bottom()
+                faces.append({"bbox": [int(x), int(y), int(x2), int(y2)], "confidence": 0.9 - (i * 0.1), "type": "dlib"}) # Arbitrary confidence
+        except Exception as e:
+            logger.error(f"Dlib detection attempt error: {e}")
+        return faces
+
+    def _detect_with_haar(self, image: np.ndarray) -> List[Dict[str, Any]]:
+        faces = []
+        if not self.haar_model:
+            return faces
+        try:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            detected = self.haar_model.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+            for i, (x, y, w, h_val) in enumerate(detected):
+                faces.append({"bbox": [int(x), int(y), int(x + w), int(y + h_val)], "confidence": 0.8 - (i * 0.05), "type": "haarcascade"})
+            if not faces:  # Relaxed params if no faces found
+                detected = self.haar_model.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=3, minSize=(20, 20))
+                for i, (x, y, w, h_val) in enumerate(detected):
+                    faces.append({"bbox": [int(x), int(y), int(x + w), int(y + h_val)], "confidence": 0.7 - (i * 0.05), "type": "haarcascade_relaxed"})
+        except Exception as e:
+            logger.error(f"Haar detection attempt error: {e}")
+        return faces
+
+    def detect_faces(self, image_path: str) -> List[Dict[str, Any]]:
+        """Optimized face detection - maintains accuracy with speed boost"""
+        try:
             image = cv2.imread(image_path)
             if image is None:
-                logger.error(f"Failed to load image: {image_path}")
                 return []
             
+            h, w = image.shape[:2]
             faces = []
             
-            # CHANGE: Start with MTCNN instead of RetinaFace
-            if self.detector_type == "mtcnn":
-                # Use MTCNN detector
+            # Try best available detector first
+            if self.mtcnn_model:
                 try:
-                    # Convert BGR to RGB for MTCNN
                     rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    
-                    # Get detections
-                    boxes, probs = self.mtcnn.detect(rgb_image)
-                    
+                    boxes, probs = self.mtcnn_model.detect(rgb_image)
                     if boxes is not None:
-                        for i, (box, prob) in enumerate(zip(boxes, probs)):
-                            if prob > 0.9:  # Only use high confidence detections
+                        for box, prob in zip(boxes, probs):
+                            if prob > 0.9:
                                 x1, y1, x2, y2 = box.astype(int)
-                                
                                 faces.append({
                                     "bbox": [int(x1), int(y1), int(x2), int(y2)],
                                     "confidence": float(prob),
                                     "type": "mtcnn"
                                 })
-                except Exception as e:
-                    logger.error(f"MTCNN detection error: {e}")
-                    # Fall back to another method
-                    self.detector_type = "dlib" if DLIB_AVAILABLE else "haarcascade"
-                    return self.detect_faces(image_path)
+                    if faces:
+                        return faces[:1]  # Return best face
+                except:
+                    pass
             
-            # REMOVE: The entire retinaface detection block
-            # elif self.detector_type == "retinaface":
-            #     # (Remove this entire section)
-            
-            elif self.detector_type == "dlib":
-                # Keep your existing dlib code
-                try:
-                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                    dlib_faces = self.detector(gray)
-                    
-                    for i, face in enumerate(dlib_faces):
-                        x, y, x2, y2 = face.left(), face.top(), face.right(), face.bottom()
-                        faces.append({
-                            "bbox": [int(x), int(y), int(x2), int(y2)],
-                            "confidence": 0.9 - (i * 0.1),  # Arbitrary confidence score
-                            "type": "dlib"
-                        })
-                except Exception as e:
-                    logger.error(f"Dlib detection error: {e}")
-                    # Fall back to another method
-                    self.detector_type = "haarcascade"
-                    return self.detect_faces(image_path)
-            
-            else:
-                # Keep your existing Haar cascade code exactly as is
+            # Haar cascade with smart scaling
+            if self.haar_model:
                 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                 
-                # First try with standard parameters
-                detected = self.detector.detectMultiScale(
-                    gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
-                )
-                
-                for i, (x, y, w, h) in enumerate(detected):
-                    faces.append({
-                        "bbox": [int(x), int(y), int(x + w), int(y + h)],
-                        "confidence": 0.8 - (i * 0.05),  # Arbitrary confidence score
-                        "type": "haarcascade"
-                    })
-                
-                # If no faces found, try with relaxed parameters
-                if not faces:
-                    detected = self.detector.detectMultiScale(
-                        gray, scaleFactor=1.05, minNeighbors=3, minSize=(20, 20)
-                    )
-                    
-                    for i, (x, y, w, h) in enumerate(detected):
-                        faces.append({
-                            "bbox": [int(x), int(y), int(x + w), int(y + h)],
-                            "confidence": 0.7 - (i * 0.05),  # Lower confidence for relaxed params
-                            "type": "haarcascade_relaxed"
-                        })
-            
-            # Keep all your existing fallback logic exactly as is
-            if not faces:
-                h, w = image.shape[:2]
-                is_id_card = w / h > 1.4 or w / h < 0.7
-                
-                if is_id_card:
-                    try:
-                        from core.image_enhancer import AdvancedImageEnhancer
-                        enhancer = AdvancedImageEnhancer()
-                        face_region = enhancer._locate_face_in_id(image)
-                        
-                        if face_region:
-                            x, y, rw, rh = face_region
-                            faces.append({
-                                "bbox": [x, y, x + rw, y + rh],
-                                "confidence": 0.6,
-                                "type": "id_document_face"
-                            })
-                        else:
-                            # Common regions for ID cards if face detection failed
-                            regions = [
-                                {"x": w//2, "y": 0, "w": w//2, "h": h//2, "confidence": 0.5, "type": "id_top_right"},
-                                {"x": 0, "y": 0, "w": w//2, "h": h//2, "confidence": 0.45, "type": "id_top_left"},
-                            ]
-                            
-                            for region in regions:
-                                x, y, r_w, r_h = region["x"], region["y"], region["w"], region["h"]
-                                x2 = min(w, x + r_w)
-                                y2 = min(h, y + r_h)
-                                
-                                faces.append({
-                                    "bbox": [x, y, x2, y2],
-                                    "confidence": region["confidence"],
-                                    "type": region["type"]
-                                })
-                    except:
-                        # Fallback regions if enhancer import fails
-                        regions = [
-                            {"x": w//2, "y": 0, "w": w//2, "h": h//2, "confidence": 0.5, "type": "id_top_right"},
-                            {"x": 0, "y": 0, "w": w//2, "h": h//2, "confidence": 0.45, "type": "id_top_left"},
-                        ]
-                        
-                        for region in regions:
-                            x, y, r_w, r_h = region["x"], region["y"], region["w"], region["h"]
-                            x2 = min(w, x + r_w)
-                            y2 = min(h, y + r_h)
-                            
-                            faces.append({
-                                "bbox": [x, y, x2, y2],
-                                "confidence": region["confidence"],
-                                "type": region["type"]
-                            })
+                # Smart scaling - only scale if image is very large
+                scale = min(1.0, 640 / max(w, h))  # Keep more detail
+                if scale < 1.0:
+                    small_gray = cv2.resize(gray, (int(w * scale), int(h * scale)))
                 else:
-                    # For regular photos that aren't IDs, assume face is in center
-                    center_margin = min(w, h) // 4
-                    x1 = max(0, w//2 - center_margin)
-                    y1 = max(0, h//2 - center_margin)
-                    x2 = min(w, w//2 + center_margin)
-                    y2 = min(h, h//2 + center_margin)
+                    small_gray = gray
                     
-                    faces.append({
-                        "bbox": [x1, y1, x2, y2],
-                        "confidence": 0.4,
-                        "type": "center_region"
-                    })
+                # Try with good parameters first
+                detected = self.haar_model.detectMultiScale(small_gray, 1.1, 5, minSize=(30, 30))
+                
+                if len(detected) > 0:
+                    for x, y, fw, fh in detected:
+                        if scale < 1.0:
+                            x, y, fw, fh = int(x/scale), int(y/scale), int(fw/scale), int(fh/scale)
+                        faces.append({
+                            "bbox": [x, y, x + fw, y + fh],
+                            "confidence": 0.85,
+                            "type": "haarcascade"
+                        })
+                    return sorted(faces, key=lambda x: x["confidence"], reverse=True)[:1]
+                
+                # Try with relaxed parameters if no faces found
+                detected = self.haar_model.detectMultiScale(small_gray, 1.05, 3, minSize=(20, 20))
+                if len(detected) > 0:
+                    x, y, fw, fh = detected[0]
+                    if scale < 1.0:
+                        x, y, fw, fh = int(x/scale), int(y/scale), int(fw/scale), int(fh/scale)
+                    return [{
+                        "bbox": [x, y, x + fw, y + fh],
+                        "confidence": 0.75,
+                        "type": "haarcascade_relaxed"
+                    }]
             
-            # Sort by confidence
-            faces.sort(key=lambda x: x["confidence"], reverse=True)
-            
-            return faces
-            
-        except Exception as e:
-            logger.error(f"Face detection error: {str(e)}")
+            # Smart fallback based on image type
+            if w / h > 1.2:  # ID card
+                return [{
+                    "bbox": [w//2, 0, w, h//2],
+                    "confidence": 0.6,
+                    "type": "id_region"
+                }]
+            else:  # Regular photo
+                margin = min(w, h) // 4
+                return [{
+                    "bbox": [w//2-margin, h//2-margin, w//2+margin, h//2+margin],
+                    "confidence": 0.5,
+                    "type": "center_region"
+                }]
+                
+        except:
             return []
     
     def get_best_face(self, image_path: str) -> Dict[str, Any]:
@@ -284,4 +251,109 @@ class MultiFaceDetector:
         if faces:
             return faces[0]
         else:
+            return None 
+    
+    # NEW METHOD: Added for rotation handling support
+    def get_best_face_from_image(self, image: np.ndarray) -> Dict[str, Any]:
+        """Get best face from numpy image array (for rotation handling)"""
+        try:
+            if image is None:
+                return None
+                
+            h, w = image.shape[:2]
+            faces = []
+            
+            # Try MTCNN first if available
+            if self.mtcnn_model:
+                try:
+                    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    boxes, probs = self.mtcnn_model.detect(rgb_image)
+                    if boxes is not None:
+                        for box, prob in zip(boxes, probs):
+                            if prob > 0.9:
+                                x1, y1, x2, y2 = box.astype(int)
+                                return {
+                                    "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                                    "confidence": float(prob),
+                                    "type": "mtcnn"
+                                }
+                except Exception as e:
+                    logger.debug(f"MTCNN detection from image error: {e}")
+                    pass
+            
+            # Try Haar cascade if MTCNN failed
+            if self.haar_model:
+                try:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                    
+                    # Smart scaling for large images
+                    scale = min(1.0, 640 / max(w, h))
+                    if scale < 1.0:
+                        small_gray = cv2.resize(gray, (int(w * scale), int(h * scale)))
+                    else:
+                        small_gray = gray
+                    
+                    # Try with good parameters first
+                    detected = self.haar_model.detectMultiScale(small_gray, 1.1, 5, minSize=(30, 30))
+                    
+                    if len(detected) > 0:
+                        x, y, fw, fh = detected[0]  # Get best detection
+                        if scale < 1.0:
+                            x, y, fw, fh = int(x/scale), int(y/scale), int(fw/scale), int(fh/scale)
+                        return {
+                            "bbox": [x, y, x + fw, y + fh],
+                            "confidence": 0.85,
+                            "type": "haarcascade"
+                        }
+                    
+                    # Try with relaxed parameters
+                    detected = self.haar_model.detectMultiScale(small_gray, 1.05, 3, minSize=(20, 20))
+                    if len(detected) > 0:
+                        x, y, fw, fh = detected[0]
+                        if scale < 1.0:
+                            x, y, fw, fh = int(x/scale), int(y/scale), int(fw/scale), int(fh/scale)
+                        return {
+                            "bbox": [x, y, x + fw, y + fh],
+                            "confidence": 0.75,
+                            "type": "haarcascade_relaxed"
+                        }
+                        
+                except Exception as e:
+                    logger.debug(f"Haar detection from image error: {e}")
+                    pass
+            
+            # Try Dlib as fallback
+            if self.dlib_model:
+                try:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                    dlib_faces = self.dlib_model(gray)
+                    if len(dlib_faces) > 0:
+                        face_rect = dlib_faces[0]
+                        x, y, x2, y2 = face_rect.left(), face_rect.top(), face_rect.right(), face_rect.bottom()
+                        return {
+                            "bbox": [int(x), int(y), int(x2), int(y2)],
+                            "confidence": 0.80,
+                            "type": "dlib"
+                        }
+                except Exception as e:
+                    logger.debug(f"Dlib detection from image error: {e}")
+                    pass
+            
+            # Last resort: smart fallback based on image shape
+            if w / h > 1.2:  # Likely ID card format
+                return {
+                    "bbox": [w//2, 0, w, h//2],
+                    "confidence": 0.6,
+                    "type": "id_region_fallback"
+                }
+            else:  # Regular photo format
+                margin = min(w, h) // 4
+                return {
+                    "bbox": [w//2-margin, h//2-margin, w//2+margin, h//2+margin],
+                    "confidence": 0.5,
+                    "type": "center_region_fallback"
+                }
+        
+        except Exception as e:
+            logger.error(f"Face detection from image error: {e}")
             return None 

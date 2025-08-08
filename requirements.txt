@@ -12,4 +12,7 @@ onnxruntime
 dlib
 scikit-image
 python-multipart
-
+filetype
+psutil>=5.9.0 
+aiohttp
+python-dotenv
